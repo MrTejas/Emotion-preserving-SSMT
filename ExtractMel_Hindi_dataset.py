@@ -1,13 +1,20 @@
+"""
+Created on Tue Jan  9 20:32:28 2018
+
+@author: hxj
+"""
+
 import wave
 import numpy as np
 import python_speech_features as ps
 import os
 import glob
 import pickle
+#import base
+#import sigproc
 
 eps = 1e-5
 
-# [Keep all the helper functions like wgn, getlogspec, read_file, etc. unchanged until generate_label]
 def wgn(x, snr):
     snr = 10**(snr/10.0)
     xpower = np.sum(x**2)/len(x)
@@ -69,137 +76,306 @@ def mapminmax(data):
         data[i,:,:,0] = (data[i,:,:,0] - min)/((max - min)+eps)
     return data
 
-def generate_label(emotion, classnum):
+def generate_label(emotion,classnum):
     label = -1
-    if emotion == 'anger':
+    if(emotion == 'angry'):
         label = 0
-    elif emotion == 'sad':
+    elif(emotion == 'sad'):
         label = 1
-    elif emotion == 'happy':
+    elif(emotion == 'happy'):
         label = 2
-    elif emotion == 'neutral':
+    elif(emotion == 'neutral'):
         label = 3
-    elif emotion == 'fear':
+    elif(emotion == 'fear'):
         label = 4
-    elif emotion == 'disgust':
+    else:
         label = 5
-    elif emotion == 'surprise':
-        label = 6
-    elif emotion == 'sarcastic':
-        label = 7
     return label
 
 def load_data():
-    # You'll need to create this file or modify to calculate your own stats
-    try:
-        f = open('./zscore40.pkl','rb')
-        mean1, std1, mean2, std2, mean3, std3 = pickle.load(f)
-        return mean1, std1, mean2, std2, mean3, std3
-    except:
-        # Return some default values if file doesn't exist
-        return 0, 1, 0, 1, 0, 1
+    f = open('./zscore40.pkl','rb')
+    mean1, std1, mean2, std2, mean3, std3 = pickle.load(f)
+    return mean1, std1, mean2, std2, mean3, std3
+        
         
 def read_Hindi_dataset():
     eps = 1e-5
+    tnum = 250 #the number of test utterance
+    vnum = 250
+    test_num = 420#the number of test 2s segments
+    valid_num = 436
+    train_num = 1500
     filter_num = 40
+    pernums_test = np.arange(tnum)#remember each utterance contain how many segments
+    pernums_valid = np.arange(vnum)
+    homedir = os.getcwd()
+    rootdir = os.path.join(homedir,"Hindi_dataset")
     
-    # Initialize data structures
-    all_data = []
-    all_labels = []
-    
-    # Statistics for z-score normalization (you may want to pre-compute these)
     mean1, std1, mean2, std2, mean3, std3 = load_data()
     
-    rootdir = 'my Dataset'  # Your dataset root
+    #2774
+    hapnum = 434#2
+    angnum = 433#0
+    neunum = 1262#3
+    sadnum = 799#1
+    pernum = 300#np.min([hapnum,angnum,sadnum,neunum])
+    #valid_num = divmod((train_num),10)[0]
+    train_label = np.empty((train_num, 1), dtype=np.int8)
+    test_label = np.empty((tnum, 1), dtype=np.int8)
+    valid_label = np.empty((vnum, 1), dtype=np.int8)
+    Test_label = np.empty((test_num, 1), dtype=np.int8)
+    Valid_label = np.empty((valid_num, 1), dtype=np.int8)
+    train_data = np.empty((train_num, 300, filter_num, 3), dtype=np.float32)
+    test_data = np.empty((test_num, 300, filter_num, 3), dtype=np.float32)
+    valid_data = np.empty((valid_num, 300, filter_num, 3), dtype=np.float32)
     
-    for session in os.listdir(rootdir):
-        if session.startswith('session'):
-            session_path = os.path.join(rootdir, session)
-            
-            for emotion in os.listdir(session_path):
-                emotion_path = os.path.join(session_path, emotion)
-                
-                if os.path.isdir(emotion_path):
-                    for wavfile in glob.glob(os.path.join(emotion_path, '*.wav')):
-                        # Read and process each WAV file
-                        data, time, rate = read_file(wavfile)
-                        mel_spec = ps.logfbank(data, rate, nfilt=filter_num)
-                        delta1 = ps.delta(mel_spec, 2)
-                        delta2 = ps.delta(delta1, 2)
-                        
-                        time = mel_spec.shape[0]
-                        
-                        # Handle variable length audio (pad or split)
-                        if time <= 300:
-                            part = mel_spec
-                            delta11 = delta1
-                            delta21 = delta2
-                            part = np.pad(part, ((0, 300 - part.shape[0]), (0, 0)), 'constant')
-                            delta11 = np.pad(delta11, ((0, 300 - delta11.shape[0]), (0, 0)), 'constant')
-                            delta21 = np.pad(delta21, ((0, 300 - delta21.shape[0]), (0, 0)), 'constant')
-                            
-                            # Create feature cube
-                            feature_cube = np.zeros((300, filter_num, 3))
-                            feature_cube[:,:,0] = (part - mean1) / (std1 + eps)
-                            feature_cube[:,:,1] = (delta11 - mean2) / (std2 + eps)
-                            feature_cube[:,:,2] = (delta21 - mean3) / (std3 + eps)
-                            
-                            all_data.append(feature_cube)
-                            all_labels.append(generate_label(emotion, 8))
-                        else:
-                            # For longer audio, take first and last 300 frames
-                            for i in [0, -1]:
-                                if i == 0:
-                                    begin, end = 0, 300
-                                else:
-                                    begin, end = time-300, time
-                                
-                                part = mel_spec[begin:end,:]
-                                delta11 = delta1[begin:end,:]
-                                delta21 = delta2[begin:end,:]
-                                
-                                feature_cube = np.zeros((300, filter_num, 3))
-                                feature_cube[:,:,0] = (part - mean1) / (std1 + eps)
-                                feature_cube[:,:,1] = (delta11 - mean2) / (std2 + eps)
-                                feature_cube[:,:,2] = (delta21 - mean3) / (std3 + eps)
-                                
-                                all_data.append(feature_cube)
-                                all_labels.append(generate_label(emotion, 8))
-    
-    # Convert to numpy arrays
-    all_data = np.array(all_data)
-    all_labels = np.array(all_labels)
-    
-    # Shuffle data
-    indices = np.arange(len(all_data))
-    np.random.shuffle(indices)
-    all_data = all_data[indices]
-    all_labels = all_labels[indices]
-    
-    # Split into train/test/valid (adjust ratios as needed)
-    total_samples = len(all_data)
-    train_end = int(0.7 * total_samples)
-    valid_end = int(0.85 * total_samples)
-    
-    train_data = all_data[:train_end]
-    train_labels = all_labels[:train_end]
-    
-    valid_data = all_data[train_end:valid_end]
-    valid_labels = all_labels[train_end:valid_end]
-    
-    test_data = all_data[valid_end:]
-    test_labels = all_labels[valid_end:]
-    
-    # Save to pickle file
-    output = './Hindi_Emotion_Dataset.pkl'
-    with open(output, 'wb') as f:
-        pickle.dump((train_data, train_labels, valid_data, valid_labels, test_data, test_labels), f)
-    
-    print("Dataset processed successfully!")
-    print(f"Total samples: {total_samples}")
-    print(f"Train samples: {len(train_data)}")
-    print(f"Validation samples: {len(valid_data)}")
-    print(f"Test samples: {len(test_data)}")
+    tnum = 0
+    vnum = 0
+    train_num = 0
+    test_num = 0
+    valid_num = 0
+    train_emt = {'happy':0, 'anger':0, 'neutral':0, 'sad':0 }
+    test_emt = {'happy':0, 'anger':0, 'neutral':0, 'sad':0 }
+    valid_emt = {'happy':0, 'anger':0, 'neutral':0, 'sad':0 }
 
-if __name__ == '__main__':
+    for speaker in os.listdir(rootdir):
+        sub_dir = os.path.join(rootdir,speaker)
+        for session in os.listdir(sub_dir):
+            session_dir = os.path.join(sub_dir,session)
+            for emotion in os.listdir(session_dir):
+                emotion_dir = os.path.join(session_dir,emotion)
+                for file in os.listdir(emotion_dir):
+                    file_dir = os.path.join(emotion_dir, file)
+                    files = glob.glob(file_dir)
+                    for filename in files:
+                        if(emotion in ['happy','anger','neutral','sad']):
+                             data, time, rate = read_file(filename)
+                             mel_spec = ps.logfbank(data,rate,nfilt = filter_num)
+                             delta1 = ps.delta(mel_spec, 2)
+                             delta2 = ps.delta(delta1, 2)
+                             #apply zscore
+                             
+                             time = mel_spec.shape[0] 
+                             if(speaker in ['1','2','3','4','5','6']):
+                                 #training set
+                                 if(time <= 300):
+                                      part = mel_spec
+                                      delta11 = delta1
+                                      delta21 = delta2
+                                      part = np.pad(part,((0,300 - part.shape[0]),(0,0)),'constant',constant_values = 0)
+                                      delta11 = np.pad(delta11,((0,300 - delta11.shape[0]),(0,0)),'constant',constant_values = 0)
+                                      delta21 = np.pad(delta21,((0,300 - delta21.shape[0]),(0,0)),'constant',constant_values = 0)
+                                      train_data[train_num,:,:,0] = (part -mean1)/(std1+eps)
+                                      train_data[train_num,:,:,1] = (delta11 - mean2)/(std2+eps)
+                                      train_data[train_num,:,:,2] = (delta21 - mean3)/(std3+eps)
+
+                                      em = generate_label(emotion,6)
+                                      train_label[train_num] = em
+                                      train_emt[emotion] = train_emt[emotion] + 1
+                                      train_num = train_num + 1
+                                 else:
+                                      
+                                     if(emotion in ['angry','neutral','sad']):
+                                         
+                                         for i in range(2):
+                                             if(i == 0):
+                                                 begin = 0
+                                                 end = begin + 300
+                                             else:
+                                                 begin = time - 300
+                                                 end = time
+                                          
+                                             part = mel_spec[begin:end,:]
+                                             delta11 = delta1[begin:end,:]
+                                             delta21 = delta2[begin:end,:]
+                                             train_data[train_num,:,:,0] = (part -mean1)/(std1+eps)
+                                             train_data[train_num,:,:,1] = (delta11 - mean2)/(std2+eps)
+                                             train_data[train_num,:,:,2] = (delta21 - mean3)/(std3+eps)
+
+                                             em = generate_label(emotion,6)
+                                             train_label[train_num] = em
+                                             train_emt[emotion] = train_emt[emotion] + 1
+                                             train_num = train_num + 1
+                                     else:
+                                        frames = divmod(time-300,100)[0] + 1
+                                        for i in range(frames):
+                                            begin = 100*i
+                                            end = begin + 300
+                                            part = mel_spec[begin:end,:]
+                                            delta11 = delta1[begin:end,:]
+                                            delta21 = delta2[begin:end,:]
+                                            train_data[train_num,:,:,0] = (part -mean1)/(std1+eps)
+                                            train_data[train_num,:,:,1] = (delta11 - mean2)/(std2+eps)
+                                            train_data[train_num,:,:,2] = (delta21 - mean3)/(std3+eps)
+                                            em = generate_label(emotion,6)
+                                            train_label[train_num] = em
+                                            train_emt[emotion] = train_emt[emotion] + 1
+                                            train_num = train_num + 1
+                                          
+                             else:
+                                 em = generate_label(emotion,6)
+                                 if(speaker in ['7']):
+                                     #test_set
+                                     test_label[tnum] = em
+                                     if(time <= 300):
+                                         pernums_test[tnum] = 1
+                                         part = mel_spec
+                                         delta11 = delta1
+                                         delta21 = delta2
+                                         part = np.pad(part,((0,300 - part.shape[0]),(0,0)),'constant',constant_values = 0)
+                                         delta11 = np.pad(delta11,((0,300 - delta11.shape[0]),(0,0)),'constant',constant_values = 0)
+                                         delta21 = np.pad(delta21,((0,300 - delta21.shape[0]),(0,0)),'constant',constant_values = 0)
+                                         test_data[test_num,:,:,0] = (part -mean1)/(std1+eps)
+                                         test_data[test_num,:,:,1] = (delta11 - mean2)/(std2+eps)
+                                         test_data[test_num,:,:,2] = (delta21 - mean3)/(std3+eps)
+                                         test_emt[emotion] = test_emt[emotion] + 1
+                                         Test_label[test_num] = em
+                                         test_num = test_num + 1
+                                         tnum = tnum + 1
+                                     else:
+                                         pernums_test[tnum] = 2
+                                         tnum = tnum + 1
+                                         for i in range(2):
+                                             if(i == 0):
+                                                 begin = 0
+                                                 end = begin + 300
+                                             else:
+                                                 end = time
+                                                 begin = time - 300
+                                             part = mel_spec[begin:end,:]
+                                             delta11 = delta1[begin:end,:]
+                                             delta21 = delta2[begin:end,:]
+                                             test_data[test_num,:,:,0] = (part -mean1)/(std1+eps)
+                                             test_data[test_num,:,:,1] = (delta11 - mean2)/(std2+eps)
+                                             test_data[test_num,:,:,2] = (delta21 - mean3)/(std3+eps)
+
+                                             test_emt[emotion] = test_emt[emotion] + 1
+                                             Test_label[test_num] = em
+                                             test_num = test_num + 1
+                                     
+                                 elif(speaker in ['8']):
+                                     #valid_set
+                                     em = generate_label(emotion,6)
+                                     valid_label[vnum] = em
+                                     if(time <= 300):
+                                         pernums_valid[vnum] = 1
+                                         part = mel_spec
+                                         delta11 = delta1
+                                         delta21 = delta2
+                                         part = np.pad(part,((0,300 - part.shape[0]),(0,0)),'constant',constant_values = 0)
+                                         delta11 = np.pad(delta11,((0,300 - delta11.shape[0]),(0,0)),'constant',constant_values = 0)
+                                         delta21 = np.pad(delta21,((0,300 - delta21.shape[0]),(0,0)),'constant',constant_values = 0)
+                                         valid_data[valid_num,:,:,0] = (part -mean1)/(std1+eps)
+                                         valid_data[valid_num,:,:,1] = (delta11 - mean2)/(std2+eps)
+                                         valid_data[valid_num,:,:,2] = (delta21 - mean3)/(std3+eps)
+                                         valid_emt[emotion] = valid_emt[emotion] + 1
+                                         Valid_label[valid_num] = em
+                                         valid_num = valid_num + 1
+                                         vnum = vnum + 1
+                                     else:
+                                         pernums_valid[vnum] = 2
+                                         vnum = vnum + 1
+                                         for i in range(2):
+                                             if(i == 0):
+                                                 begin = 0
+                                                 end = begin + 300
+                                             else:
+                                                 end = time
+                                                 begin = time - 300
+                                             part = mel_spec[begin:end,:]
+                                             delta11 = delta1[begin:end,:]
+                                             delta21 = delta2[begin:end,:]
+                                             valid_data[valid_num,:,:,0] = (part -mean1)/(std1+eps)
+                                             valid_data[valid_num,:,:,1] = (delta11 - mean2)/(std2+eps)
+                                             valid_data[valid_num,:,:,2] = (delta21 - mean3)/(std3+eps)
+                                             valid_emt[emotion] = valid_emt[emotion] + 1
+                                             Valid_label[valid_num] = em
+                                             valid_num = valid_num + 1
+                                     
+                                    
+                                 
+                        else:
+                            pass
+    
+    hap_index = np.arange(hapnum)
+    neu_index = np.arange(neunum)
+    sad_index = np.arange(sadnum)
+    ang_index = np.arange(angnum)
+    h2 = 0
+    a0 = 0
+    n3 = 0
+    s1 = 0
+    for l in range(train_num):
+        if(train_label[l] == 0):
+            ang_index[a0] = l
+            a0 = a0 + 1
+        elif (train_label[l] == 1):
+            sad_index[s1] = l
+            s1 = s1 + 1
+        elif (train_label[l] == 2):
+            hap_index[h2] = l
+            h2 = h2 + 1
+        else:
+            neu_index[n3] = l
+            n3 = n3 + 1
+    for m in range(1):
+        np.random.shuffle(neu_index)
+        np.random.shuffle(hap_index)
+        np.random.shuffle(sad_index)
+        np.random.shuffle(ang_index)
+        #define emotional array
+        hap_label = np.empty((pernum,1), dtype = np.int8)
+        ang_label = np.empty((pernum,1), dtype = np.int8)
+        sad_label = np.empty((pernum,1), dtype = np.int8)
+        neu_label = np.empty((pernum,1), dtype = np.int8)
+        hap_data = np.empty((pernum,300,filter_num,3),dtype = np.float32)
+        neu_data = np.empty((pernum,300,filter_num,3),dtype = np.float32)
+        sad_data = np.empty((pernum,300,filter_num,3),dtype = np.float32)
+        ang_data = np.empty((pernum,300,filter_num,3),dtype = np.float32)    
+    
+        hap_data = train_data[hap_index[0:pernum]].copy()
+        hap_label = train_label[hap_index[0:pernum]].copy()
+        ang_data = train_data[ang_index[0:pernum]].copy()
+        ang_label = train_label[ang_index[0:pernum]].copy()
+        sad_data = train_data[sad_index[0:pernum]].copy()
+        sad_label = train_label[sad_index[0:pernum]].copy()
+        neu_data = train_data[neu_index[0:pernum]].copy()
+        neu_label = train_label[neu_index[0:pernum]].copy()
+        train_num = 4*pernum
+    
+        Train_label = np.empty((train_num,1), dtype=np.int8)
+        Train_data = np.empty((train_num,300,filter_num,3), dtype=np.float32)
+        Train_data[0:pernum] = hap_data
+        Train_label[0:pernum] = hap_label
+        Train_data[pernum:2*pernum] = sad_data
+        Train_label[pernum:2*pernum] = sad_label  
+        Train_data[2*pernum:3*pernum] = neu_data
+        Train_label[2*pernum:3*pernum] = neu_label 
+        Train_data[3*pernum:4*pernum] = ang_data
+        Train_label[3*pernum:4*pernum] = ang_label 
+    
+        arr = np.arange(train_num)
+        np.random.shuffle(arr)
+        Train_data = Train_data[arr[0:]]
+        Train_label = Train_label[arr[0:]]
+        print(train_label.shape)
+        print(train_emt)
+        print(test_emt)
+        print(valid_emt)
+        #print test_label[0:500,:]
+        #f=open('./CASIA_40_delta.pkl','wb') 
+        #output = './IEMOCAP40.pkl'
+        output = './Hindi_dataset.pkl'
+        f = open(output,'wb') 
+        # pickle.dump((Train_data, Train_label, test_data, test_label, valid_data, valid_label, Valid_label, Test_label, pernums_test, pernums_valid), f, protocol=2)
+        pickle.dump((Train_data, Train_label, test_data, test_label, valid_data, valid_label, Valid_label, Test_label, pernums_test, pernums_valid), f)
+        f.close()           
+    return
+              
+
+if __name__=='__main__':
     read_Hindi_dataset()
+    #print "test_num:", test_num
+    #print "train_num:", train_num
+#    n = wgn(x, 6)
+#    xn = x+n # 增加了6dBz信噪比噪声的信号
