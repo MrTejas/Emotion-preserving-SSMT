@@ -3,28 +3,21 @@
 
 
 
-Eval metrics
-small
-Evaluation Metrics:
-WER: 116.37
-CER: 25.61
-Samples Used: 38
+Total samples = 3843
+Eval metrics for f=0.01
 
+small
+WER: 123.85
+CER: 26.05
 
 medium
-Evaluation Metrics:
-WER: 100.98/3843
-CER: 21.12/3843
-Samples Used: 38/3843
+WER: 93.81
+CER: 20.47
 
 base
-Evaluation Metrics:
-WER: 480.7/3843
-CER: 103.71/3843
-Samples Used: 38/3843
+WER: 480.7
+CER: 103.71
 
 tiny
-Evaluation Metrics:
-WER: 496.25/3843
-CER: 108.65/3843
-Samples Used: 38/3843
+WER: 496.25
+CER: 108.65
